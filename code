@@ -1,0 +1,57 @@
+#include <WiFi.h>
+#include <FirebaseESP32.h>
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+
+#define DHTPIN 4
+#define DHTTYPE DHT11
+#define RELAY_PIN 5
+#define CURRENT_SENSOR_PIN 34
+
+// Replace with your credentials
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+#define FIREBASE_HOST "YOUR_PROJECT.firebaseio.com"
+#define FIREBASE_AUTH "YOUR_FIREBASE_AUTH_KEY"
+
+FirebaseData firebaseData;
+DHT dht(DHTPIN, DHTTYPE);
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(RELAY_PIN, OUTPUT);
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected!");
+
+  Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
+  Firebase.reconnectWiFi(true);
+
+  dht.begin();
+}
+
+void loop() {
+  float temp = dht.readTemperature();
+  float currentValue = analogRead(CURRENT_SENSOR_PIN); // raw current sensor value
+  float current = (currentValue / 4095.0) * 5.0;       // convert to amps
+
+  // Send data to Firebase
+  if (Firebase.setFloat(firebaseData, "/sensor/temperature", temp) &&
+      Firebase.setFloat(firebaseData, "/sensor/current", current)) {
+    Serial.println("Data sent to Firebase");
+  } else {
+    Serial.println("Error sending data: " + firebaseData.errorReason());
+  }
+
+  // Get control command from Firebase
+  if (Firebase.getBool(firebaseData, "/control/relay")) {
+    bool relayState = firebaseData.boolData();
+    digitalWrite(RELAY_PIN, relayState ? HIGH : LOW);
+  }
+
+  delay(2000); // update every 2 seconds
+}
